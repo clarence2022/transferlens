@@ -1,0 +1,41 @@
+# TransferLens Worker - Fly.io Configuration
+# Deploy with: fly deploy -c infra/fly/worker.toml
+
+app = "transferlens-worker"
+primary_region = "lhr"  # London - change to nearest region
+
+[build]
+  dockerfile = "apps/worker/Dockerfile"
+
+[env]
+  WORKER_LOG_LEVEL = "INFO"
+  MODEL_STORAGE_PATH = "/app/models"
+
+# No HTTP service - this is a background worker
+# Use fly machine run for scheduled execution
+
+# Process configuration
+[processes]
+  # Default process - run daily pipeline then exit
+  app = "python -m worker.cli daily:run"
+
+# VM configuration - more memory for ML
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 1024
+
+# Persistent volume for model storage
+[[mounts]]
+  source = "worker_models"
+  destination = "/app/models"
+
+# Secrets (set via CLI):
+# fly secrets set DATABASE_URL="postgres://..."
+
+# To run manually:
+# fly ssh console -a transferlens-worker
+# python -m worker.cli daily:run
+
+# To schedule (use GitHub Actions or external cron):
+# See .github/workflows/daily-pipeline.yml

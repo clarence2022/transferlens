@@ -1,0 +1,144 @@
+# TransferLens - Render Blueprint
+# https://render.com/docs/blueprint-spec
+#
+# Deploy with: Connect GitHub repo to Render and select this blueprint
+
+databases:
+  - name: transferlens-db
+    plan: free  # Use 'starter' for production
+    region: oregon
+    postgresMajorVersion: 15
+    # ipAllowList: []  # Uncomment to restrict access
+
+services:
+  # ==========================================================================
+  # API Service
+  # ==========================================================================
+  - type: web
+    name: transferlens-api
+    runtime: docker
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    region: oregon
+    plan: free  # Use 'starter' for production
+    
+    healthCheckPath: /health
+    
+    autoDeploy: true
+    
+    envVars:
+      # Database connection (auto-linked)
+      - key: DATABASE_URL
+        fromDatabase:
+          name: transferlens-db
+          property: connectionString
+      
+      # Admin API key (auto-generated)
+      - key: ADMIN_API_KEY
+        generateValue: true
+      
+      # CORS - update with your domain
+      - key: CORS_ORIGINS
+        value: https://transferlens-web.onrender.com
+      
+      # Logging
+      - key: API_LOG_LEVEL
+        value: INFO
+      
+      # Rate limiting
+      - key: API_RATE_LIMIT
+        value: "60"
+      - key: API_RATE_LIMIT_BURST
+        value: "100"
+
+  # ==========================================================================
+  # Web Service (Next.js)
+  # ==========================================================================
+  - type: web
+    name: transferlens-web
+    runtime: docker
+    dockerfilePath: ./apps/web/Dockerfile
+    dockerContext: .
+    region: oregon
+    plan: free  # Use 'starter' for production
+    
+    autoDeploy: true
+    
+    envVars:
+      # API URL - update with your API URL
+      - key: NEXT_PUBLIC_API_URL
+        value: https://transferlens-api.onrender.com
+      
+      # Site URL for OG images
+      - key: NEXT_PUBLIC_SITE_URL
+        value: https://transferlens-web.onrender.com
+
+  # ==========================================================================
+  # Worker Service (Background Jobs)
+  # ==========================================================================
+  - type: worker
+    name: transferlens-worker
+    runtime: docker
+    dockerfilePath: ./apps/worker/Dockerfile
+    dockerContext: .
+    region: oregon
+    plan: starter  # Workers require paid plan
+    
+    autoDeploy: true
+    
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: transferlens-db
+          property: connectionString
+      
+      - key: WORKER_LOG_LEVEL
+        value: INFO
+      
+      - key: MODEL_STORAGE_PATH
+        value: /app/models
+
+  # ==========================================================================
+  # Cron Job (Daily Pipeline)
+  # ==========================================================================
+  - type: cron
+    name: transferlens-daily-pipeline
+    runtime: docker
+    dockerfilePath: ./apps/worker/Dockerfile
+    dockerContext: .
+    region: oregon
+    
+    # Run at 6am UTC daily
+    schedule: "0 6 * * *"
+    
+    dockerCommand: python -m worker.cli daily:run
+    
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: transferlens-db
+          property: connectionString
+      
+      - key: WORKER_LOG_LEVEL
+        value: INFO
+
+  # ==========================================================================
+  # Cron Job (Hourly Signals)
+  # ==========================================================================
+  - type: cron
+    name: transferlens-hourly-signals
+    runtime: docker
+    dockerfilePath: ./apps/worker/Dockerfile
+    dockerContext: .
+    region: oregon
+    
+    # Run every hour
+    schedule: "0 * * * *"
+    
+    dockerCommand: python -m worker.cli signals:derive --window 1h
+    
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: transferlens-db
+          property: connectionString

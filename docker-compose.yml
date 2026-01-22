@@ -1,0 +1,135 @@
+version: "3.9"
+
+services:
+  # =============================================================================
+  # INFRASTRUCTURE
+  # =============================================================================
+  
+  postgres:
+    image: postgres:16-alpine
+    container_name: tl-postgres
+    environment:
+      POSTGRES_USER: transferlens
+      POSTGRES_PASSWORD: transferlens_dev
+      POSTGRES_DB: transferlens
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U transferlens"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tl-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: tl-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tl-network
+
+  # =============================================================================
+  # APPLICATIONS
+  # =============================================================================
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: tl-api
+    environment:
+      DATABASE_URL: postgresql://transferlens:transferlens_dev@postgres:5432/transferlens
+      REDIS_URL: redis://redis:6379/0
+      ENVIRONMENT: development
+      DEBUG: "true"
+      SECRET_KEY: dev-secret-key-change-in-production
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./apps/api:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tl-network
+    command: >
+      sh -c "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    container_name: tl-web
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      API_URL: http://api:8000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./apps/web:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - tl-network
+    command: npm run dev
+
+  worker:
+    build:
+      context: ./apps/worker
+      dockerfile: Dockerfile
+    container_name: tl-worker
+    environment:
+      DATABASE_URL: postgresql://transferlens:transferlens_dev@postgres:5432/transferlens
+      REDIS_URL: redis://redis:6379/0
+      ENVIRONMENT: development
+      MODEL_STORAGE_PATH: /app/models
+    volumes:
+      - ./apps/worker:/app
+      - worker_models:/app/models
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - tl-network
+    # Default: keep container running for manual job execution
+    # Override with: docker compose run worker python -m worker.cli <command>
+    command: tail -f /dev/null
+    profiles:
+      - worker
+
+# =============================================================================
+# VOLUMES & NETWORKS
+# =============================================================================
+
+volumes:
+  postgres_data:
+  redis_data:
+  worker_models:
+
+networks:
+  tl-network:
+    driver: bridge
