@@ -17,8 +17,8 @@ services:
   - type: web
     name: transferlens-api
     runtime: docker
-    dockerfilePath: ./apps/api/Dockerfile
-    dockerContext: .
+    dockerfilePath: ./Dockerfile
+    dockerContext: ./apps/api
     region: oregon
     plan: free  # Use 'starter' for production
     
@@ -57,8 +57,8 @@ services:
   - type: web
     name: transferlens-web
     runtime: docker
-    dockerfilePath: ./apps/web/Dockerfile
-    dockerContext: .
+    dockerfilePath: ./Dockerfile
+    dockerContext: ./apps/web
     region: oregon
     plan: free  # Use 'starter' for production
     
@@ -79,8 +79,8 @@ services:
   - type: worker
     name: transferlens-worker
     runtime: docker
-    dockerfilePath: ./apps/worker/Dockerfile
-    dockerContext: .
+    dockerfilePath: ./Dockerfile
+    dockerContext: ./apps/worker
     region: oregon
     plan: starter  # Workers require paid plan
     
@@ -104,8 +104,8 @@ services:
   - type: cron
     name: transferlens-daily-pipeline
     runtime: docker
-    dockerfilePath: ./apps/worker/Dockerfile
-    dockerContext: .
+    dockerfilePath: ./Dockerfile
+    dockerContext: ./apps/worker
     region: oregon
     
     # Run at 6am UTC daily
@@ -128,8 +128,8 @@ services:
   - type: cron
     name: transferlens-hourly-signals
     runtime: docker
-    dockerfilePath: ./apps/worker/Dockerfile
-    dockerContext: .
+    dockerfilePath: ./Dockerfile
+    dockerContext: ./apps/worker
     region: oregon
     
     # Run every hour
